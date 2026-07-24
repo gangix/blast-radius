@@ -43,6 +43,7 @@ class WriteBackResult:
     document_urn: str | None
     tagged_columns: list[str]
     messages: list[str] = field(default_factory=list)
+    document_urns: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -135,36 +136,45 @@ class BlastRadiusAgent:
                 return nodes
             except Exception as exc:  # noqa: BLE001 - Kit read must never break a review
                 warnings.append(f"Kit lineage read failed for {change.table}; used SDK: {exc}")
-        return self._memo(cache, "downstream", urn, lambda: self.client.downstream(urn), [], change, warnings)
+        return self._memo(cache, "downstream", urn,
+                          lambda: self.client.downstream(urn), [], change, warnings)
 
     # -- orchestration ----------------------------------------------------- #
-    def review(self, file_changes: list[FileChange]) -> Report:
+    def review(self, file_changes: list[FileChange], *, pr_ref: str | None = None) -> Report:
         changes = self.diff_parser.parse(file_changes)
         assessments, warnings = self.assess_changes(changes)
         markdown = render_comment(assessments, ctx=self.comment_ctx)
-        writeback = self._write_back(assessments, warnings) if self.write_back else None
+        writeback = (
+            self._write_back(assessments, warnings, pr_ref) if self.write_back else None
+        )
         return Report(assessments=assessments, verdict=worst_verdict(assessments),
                       markdown=markdown, warnings=warnings, writeback=writeback)
 
-    def _write_back(self, assessments, warnings):
+    def _write_back(self, assessments, warnings, pr_ref=None):
         if self.context_client is None:
             return None
-        doc_urn, tagged, msgs = None, [], []
+        doc_urn, doc_urns, tagged, msgs = None, [], [], []
         for a in assessments:
             if a.verdict is Verdict.PASS or a.resolved is None:
                 continue
-            tag = TAGS.get(a.verdict)
-            title, body = render_document(a)
-            related = [n.urn for n in a.downstream_consumers]
             try:
-                doc_urn = self.context_client.write_assessment(
+                tag = TAGS.get(a.verdict)
+                title, body = render_document(a, pr_ref=pr_ref)
+                related = [n.urn for n in a.downstream_consumers]
+                new_urn = self.context_client.write_assessment(
                     a.resolved.urn, title=title, body_md=body, related_assets=related)
+                if new_urn:
+                    doc_urn = doc_urn or new_urn
+                    doc_urns.append(new_urn)
                 if tag and a.change.column:
                     self.context_client.ensure_tag(tag[0], name=tag[1], description=tag[2])
-                    tagged += self.context_client.tag_change(a.resolved.urn, [a.change.column], tag[0])
+                    tagged += self.context_client.tag_change(
+                        a.resolved.urn, [a.change.column], tag[0])
             except Exception as exc:  # noqa: BLE001 - write-back must never break a review
                 msgs.append(f"write-back failed for {a.change.table}: {exc}")
-        return WriteBackResult(document_urn=doc_urn, tagged_columns=tagged, messages=msgs)
+        return WriteBackResult(
+            document_urn=doc_urn, document_urns=doc_urns, tagged_columns=tagged, messages=msgs
+        )
 
     def assess_changes(self, changes: list[Change]) -> tuple[list[Assessment], list[str]]:
         resolved_map = self._resolve_all(changes)

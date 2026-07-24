@@ -187,7 +187,8 @@ def main() -> int:
     write_back = os.getenv("BLAST_RADIUS_WRITE_BACK", "").lower() in ("1", "true", "yes")
     try:
         report = BlastRadiusAgent(comment_ctx=ctx, context_client=context_client,
-                                  write_back=write_back).review(changes)
+                                  write_back=write_back).review(
+            changes, pr_ref=f"{repo}#{number}")
         body, unavailable = report.markdown, False
     except DataHubUnavailable as exc:
         report, unavailable, body = None, True, _infra_comment(exc)
@@ -201,9 +202,9 @@ def main() -> int:
     _safe_io(lambda: post_check(repo, head, conclusion, title=title, summary=summary, run=_run),
              "posting check")
 
-    if report and report.writeback and report.writeback.document_urn:
-        print(f"::notice::Blast Radius wrote back to DataHub: doc + "
-              f"tagged {report.writeback.tagged_columns}")
+    if report and report.writeback and report.writeback.document_urns:
+        print(f"::notice::Blast Radius wrote back to DataHub: docs "
+              f"{report.writeback.document_urns} + tagged {report.writeback.tagged_columns}")
 
     for w in (report.warnings if report else []):
         print(f"::warning::{w}")

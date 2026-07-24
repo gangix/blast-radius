@@ -171,7 +171,7 @@ def test_main_break_posts_comment_and_failure_check(tmp_path, monkeypatch):
         def __init__(self, **k):
             pass
 
-        def review(self, changes):
+        def review(self, changes, **k):
             return report
 
     monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
@@ -192,7 +192,7 @@ def test_main_datahub_unavailable_is_neutral(tmp_path, monkeypatch):
         def __init__(self, **k):
             pass
 
-        def review(self, changes):
+        def review(self, changes, **k):
             raise DataHubUnavailable("down")
 
     monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
@@ -215,7 +215,7 @@ def test_main_returns_0_when_posting_raises(tmp_path, monkeypatch):
         def __init__(self, **k):
             pass
 
-        def review(self, changes):
+        def review(self, changes, **k):
             return report
 
     monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
@@ -246,7 +246,8 @@ def test_main_enables_writeback_from_env(tmp_path, monkeypatch):
 
     class FakeAgent:
         def __init__(self, **k): captured.update(k)
-        def review(self, changes):
+        def review(self, changes, **k):
+            captured.update(review_kwargs=k)
             return Report(assessments=[0], verdict=Verdict.BREAK, markdown="MD", warnings=[])
 
     monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
@@ -255,3 +256,4 @@ def test_main_enables_writeback_from_env(tmp_path, monkeypatch):
     monkeypatch.setattr(action, "post_check", lambda *a, **k: None)
     assert action.main() == 0
     assert captured.get("write_back") is True and captured.get("context_client") == "CTX"
+    assert captured.get("review_kwargs", {}).get("pr_ref") == "o/r#7"

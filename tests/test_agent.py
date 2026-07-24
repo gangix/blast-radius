@@ -247,8 +247,21 @@ def test_review_writes_back_when_enabled():
     agent = BlastRadiusAgent(client=fc, context_client=ctx, write_back=True)
     report = agent.review([ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")])
     assert report.writeback is not None and report.writeback.document_urn == "urn:li:document:1"
+    assert report.writeback.document_urns == ["urn:li:document:1"]
     assert "discount_amount" in report.writeback.tagged_columns
     assert ctx.ensured and ctx.docs and ctx.tags       # tag ensured, doc saved, column tagged
+
+
+def test_review_writeback_threads_pr_ref_into_document_body():
+    fc = FakeClient(usage={DS: usage_with({"discount_amount": 11})},
+                    q_col={(DS, "discount_amount"): [qref("Daily revenue")]})
+    ctx = FakeContext(down=dashboards(3))
+    agent = BlastRadiusAgent(client=fc, context_client=ctx, write_back=True)
+    agent.review([ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")],
+                 pr_ref="owner/repo#42")
+    assert ctx.docs, "write_assessment should have been called"
+    (_urn, kwargs), = ctx.docs
+    assert "owner/repo#42" in kwargs["body_md"]
 
 
 def test_review_no_writeback_when_disabled():
