@@ -10,9 +10,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 from collections.abc import Callable
 
+from .agent import BlastRadiusAgent, DataHubUnavailable
+from .comment import CommentContext
 from .diff_parser import FileChange, FileStatus
 from .severity import Verdict
 
@@ -110,10 +114,72 @@ def upsert_comment(repo: str, pr: int, body: str, *,
 
 def post_check(repo: str, head_sha: str, conclusion: str, *,
                title: str, summary: str, run: Callable[[list[str]], str]) -> None:
+    payload = _write_json({
+        "name": "Blast Radius",
+        "head_sha": head_sha,
+        "status": "completed",
+        "conclusion": conclusion,
+        "output": {"title": title, "summary": summary}
+    })
     run(["gh", "api", "--method", "POST", f"repos/{repo}/check-runs",
-         "-f", "name=Blast Radius",
-         "-f", f"head_sha={head_sha}",
-         "-f", "status=completed",
-         "-f", f"conclusion={conclusion}",
-         "-f", f"output[title]={title}",
-         "-f", f"output[summary]={summary}"])
+         "--input", payload])
+
+
+# -- entrypoint -------------------------------------------------------------
+def _run(args: list[str]) -> str:
+    return subprocess.run(args, check=True, capture_output=True, text=True).stdout
+
+
+def _infra_comment(exc: Exception) -> str:
+    return (
+        f"{MARKER}\n\n## ⚠️ Blast Radius — could not analyze\n\n"
+        "Could not reach DataHub, so the blast radius was **not** computed. "
+        "This is an infrastructure issue, not an all-clear — re-run once DataHub "
+        f"is reachable.\n\n<sub>{exc}</sub>\n"
+    )
+
+
+def main() -> int:
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if not event_path:
+        print("No GITHUB_EVENT_PATH — not running inside a GitHub Action.",
+              file=sys.stderr)
+        return 0
+    with open(event_path, encoding="utf-8") as f:
+        event = json.load(f)
+    pr = event.get("pull_request")
+    if not pr:
+        print("Not a pull_request event; nothing to do.")
+        return 0
+    base, head, number = pr["base"]["sha"], pr["head"]["sha"], pr["number"]
+    repo = os.environ["GITHUB_REPOSITORY"]
+
+    changes = collect_changes(base, head, run=_run)
+    if not changes:
+        print("No .sql/.ddl changes; staying silent.")
+        return 0
+
+    ctx = CommentContext(
+        link_base=os.getenv("BLAST_RADIUS_LINK_BASE")
+        or CommentContext().link_base
+    )
+    try:
+        report = BlastRadiusAgent(comment_ctx=ctx).review(changes)
+        body, unavailable = report.markdown, False
+    except DataHubUnavailable as exc:
+        report, unavailable, body = None, True, _infra_comment(exc)
+
+    upsert_comment(repo, number, body, run=_run)
+    verdict = report.verdict if report else Verdict.PASS
+    summary = (report.markdown if report else body)[:900]
+    post_check(
+        repo, head, check_conclusion(verdict, unavailable),
+        title=check_title(report, unavailable), summary=summary, run=_run
+    )
+    for w in (report.warnings if report else []):
+        print(f"::warning::{w}")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

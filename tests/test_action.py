@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from blast_radius import FileStatus, Report, Verdict
+from blast_radius import DataHubUnavailable, FileChange, FileStatus, Report, Verdict, action
 from blast_radius.action import (
     MARKER,
     check_conclusion,
@@ -107,4 +107,73 @@ def test_post_check_sets_conclusion():
     post_check("o/r", "sha1", "failure", title="t", summary="s",
                run=lambda a: (calls.append(a), "")[1])
     joined = " ".join(calls[0])
-    assert "check-runs" in joined and "conclusion=failure" in joined and "head_sha=sha1" in joined
+    assert "check-runs" in joined and "--method" in joined and "POST" in joined
+    assert "--input" in joined  # conclusion now in JSON payload
+
+
+# -- main() flow tests (monkeypatched) ------------------------------------------
+
+
+def _event(tmp_path, monkeypatch):
+    ev = tmp_path / "event.json"
+    ev.write_text(json.dumps(
+        {"pull_request": {"base": {"sha": "b"}, "head": {"sha": "h"}, "number": 7}}))
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(ev))
+    monkeypatch.setenv("GITHUB_REPOSITORY", "o/r")
+
+
+FC = FileChange(path="m.sql", new_content="x", status=FileStatus.ADDED)
+
+
+def test_main_empty_changes_is_silent(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+    monkeypatch.setattr(action, "collect_changes", lambda *a, **k: [])
+    posted = []
+    monkeypatch.setattr(action, "upsert_comment", lambda *a, **k: posted.append("c"))
+    monkeypatch.setattr(action, "post_check", lambda *a, **k: posted.append("k"))
+    assert action.main() == 0 and posted == []
+
+
+def test_main_break_posts_comment_and_failure_check(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+    monkeypatch.setattr(action, "collect_changes", lambda *a, **k: [FC])
+    report = Report(assessments=[0], verdict=Verdict.BREAK, markdown="MD-BODY",
+                    warnings=["w1"])
+
+    class FakeAgent:
+        def __init__(self, **k):
+            pass
+
+        def review(self, changes):
+            return report
+
+    monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
+    seen = {}
+    monkeypatch.setattr(action, "upsert_comment",
+                        lambda repo, pr, body, **k: seen.update(body=body))
+    monkeypatch.setattr(action, "post_check",
+                        lambda repo, sha, concl, **k: seen.update(concl=concl))
+    assert action.main() == 0
+    assert seen["body"] == "MD-BODY" and seen["concl"] == "failure"
+
+
+def test_main_datahub_unavailable_is_neutral(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+    monkeypatch.setattr(action, "collect_changes", lambda *a, **k: [FC])
+
+    class FakeAgent:
+        def __init__(self, **k):
+            pass
+
+        def review(self, changes):
+            raise DataHubUnavailable("down")
+
+    monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
+    seen = {}
+    monkeypatch.setattr(action, "upsert_comment",
+                        lambda repo, pr, body, **k: seen.update(body=body))
+    monkeypatch.setattr(action, "post_check",
+                        lambda repo, sha, concl, **k: seen.update(concl=concl))
+    assert action.main() == 0
+    assert seen["concl"] == "neutral"
+    assert seen["body"].startswith(MARKER) and "could not" in seen["body"].lower()

@@ -22,6 +22,9 @@ dev = [
     "ruff>=0.5",
 ]
 
+[project.scripts]
+blast-radius-review = "blast_radius.action:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/blast_radius"]
 
