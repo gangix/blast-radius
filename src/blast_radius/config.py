@@ -30,12 +30,14 @@ class DataHubConfig:
 
     @classmethod
     def from_env(cls) -> DataHubConfig:
+        # An env var set to "" (as a composite Action does for a blank input) means
+        # "unset" here — fall back to the default rather than a blank override.
         return cls(
-            server=os.getenv("DATAHUB_GMS_URL", DEFAULT_SERVER),
+            server=os.getenv("DATAHUB_GMS_URL") or DEFAULT_SERVER,
             token=os.getenv("DATAHUB_GMS_TOKEN") or None,
-            platform=os.getenv("BLAST_RADIUS_PLATFORM", "snowflake"),
-            instance_prefix=os.getenv("BLAST_RADIUS_PREFIX", "b2fd91"),
-            fabric=os.getenv("BLAST_RADIUS_FABRIC", "PROD"),
+            platform=os.getenv("BLAST_RADIUS_PLATFORM") or "snowflake",
+            instance_prefix=os.getenv("BLAST_RADIUS_PREFIX") or "b2fd91",
+            fabric=os.getenv("BLAST_RADIUS_FABRIC") or "PROD",
         )
 
     def qualify(self, table: str) -> str:
