@@ -102,6 +102,7 @@ class Assessment:
     reasons: list[str]           # factual bullets, each grounded in a signal
     breaking_queries: list[QueryRef]
     owners: list[Owner]
+    downstream_consumers: list[LineageNode] = field(default_factory=list)
 
     @property
     def emoji(self) -> str:
@@ -173,6 +174,7 @@ def assess(facts: ImpactFacts) -> Assessment:
         reasons=reasons,
         breaking_queries=list(facts.breaking_queries),
         owners=list(facts.owners),
+        downstream_consumers=[n for n in facts.downstream if n.is_consumer],
     )
 
 

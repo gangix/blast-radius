@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
-from blast_radius import Change, ChangeKind, Verdict
+from blast_radius import Change, ChangeKind, LineageNode, Verdict
 from blast_radius.comment import render_comment
 from blast_radius.severity import ImpactFacts, assess
 
@@ -160,3 +160,16 @@ def test_impact_cell_table_change_may_use_downstream():
     out = render_comment([drop_tbl, other])
     row = next(ln for ln in out.splitlines() if "Drop table" in ln)
     assert "37 downstream" in row and "3 dashboards" in row
+
+
+def test_affected_assets_render_as_clickable_links():
+    a = dataclasses.replace(
+        break_assessment_with_queries(),
+        downstream_consumers=[LineageNode("urn:li:dashboard:(tableau,d0)", "DASHBOARD", 3,
+                                          "Finance Overview")],
+    )
+    out = render_comment([a])
+    assert "**Affected assets:**" in out
+    assert ("[Finance Overview]"
+            "(https://datahub.example.com/dashboard/"
+            "urn%3Ali%3Adashboard%3A%28tableau%2Cd0%29)") in out

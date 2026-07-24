@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .diff_parser import Change, ChangeKind
+from .models import LineageNode
 from .severity import Assessment, Verdict
 
 # Column-scoped change kinds — Fix #1 forbids table-level counts in their phrasing.
@@ -150,6 +151,13 @@ def _queries_block(a: Assessment) -> list[str]:
     return lines
 
 
+def _consumers_block(consumers: list[LineageNode], ctx: CommentContext) -> list[str]:
+    lines = ["**Affected assets:**"]
+    for n in consumers:
+        lines.append(f"- [{n.label}]({_entity_url(ctx.link_base, n.entity_type, n.urn)})")
+    return lines
+
+
 def _owners_line(owners) -> str:
     seen: set[str] = set()
     names: list[str] = []
@@ -161,18 +169,20 @@ def _owners_line(owners) -> str:
     return f"**Owners (from DataHub):** {', '.join(names)}"
 
 
-def _section_body(a: Assessment) -> list[str]:
+def _section_body(a: Assessment, ctx: CommentContext) -> list[str]:
     body = [f"- {r}" for r in a.reasons]
     if a.breaking_queries:
         body += ["", *_queries_block(a)]
+    if a.downstream_consumers:
+        body += ["", *_consumers_block(a.downstream_consumers, ctx)]
     if a.owners:
         body += ["", _owners_line(a.owners)]
     return body
 
 
-def _section(a: Assessment, *, collapse: bool) -> list[str]:
+def _section(a: Assessment, ctx: CommentContext, *, collapse: bool) -> list[str]:
     title = f"{a.emoji} {_change_title(a.change)}"
-    body = _section_body(a)
+    body = _section_body(a, ctx)
     if collapse:
         return ["<details>", f"<summary>{title}</summary>", "", *body, "", "</details>"]
     return [f"### {title}", "", *body]
@@ -197,7 +207,7 @@ def render_comment(
 
     for a in _ranked(assessments):
         collapse = a.verdict is Verdict.PASS and not all_pass
-        lines += _section(a, collapse=collapse)
+        lines += _section(a, ctx, collapse=collapse)
         lines.append("")
 
     lines += ["---", _FOOTER]

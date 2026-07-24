@@ -157,3 +157,15 @@ def test_type_change_flags_corruption_when_hot():
     ))
     assert a.verdict is Verdict.BREAK
     assert any("corrupt" in r for r in a.reasons)
+
+
+def test_assess_populates_downstream_consumers():
+    facts = ImpactFacts(
+        change=Change(ChangeKind.DROP_COLUMN, "analytics.order_details", column="discount_amount"),
+        resolved=resolved(),
+        downstream=dashboards(2),
+        usage=usage({"discount_amount": 11}),
+        breaking_queries=[query("q", "sarah", "discount_amount")],
+    )
+    a = assess(facts)
+    assert [n.entity_type for n in a.downstream_consumers] == ["DASHBOARD", "DASHBOARD"]
