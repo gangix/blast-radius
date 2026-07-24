@@ -88,3 +88,21 @@ def test_owners_are_plain_text_deduped_no_at_sign():
     assert "**Owners (from DataHub):** finance-team" in out
     assert "@finance-team" not in out
     assert out.count("finance-team") == 1  # deduped by urn
+
+
+def test_owners_with_null_name_never_surfaces_email():
+    """When an owner has name=None and email set, owners line uses URN tail, not email."""
+    a = pass_assessment("sensitive_field")
+    owners_with_email = [
+        Owner("urn:li:corpuser:jdoe", "corpuser", name=None, email="jdoe@example.com"),
+    ]
+    a = dataclasses.replace(a, verdict=Verdict.WARN, owners=owners_with_email)
+    out = render_comment([a])
+
+    # Extract the owners line from the output
+    owners_line = next(line for line in out.split("\n") if "**Owners (from DataHub):**" in line)
+
+    # Must not contain @ anywhere
+    assert "@" not in owners_line, f"Owners line contains @: {owners_line}"
+    # Must contain the URN tail (last colon-segment)
+    assert "jdoe" in owners_line, f"URN tail 'jdoe' not in owners line: {owners_line}"

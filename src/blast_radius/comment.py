@@ -120,7 +120,7 @@ def _owners_line(owners) -> str:
         if o.urn in seen:
             continue
         seen.add(o.urn)
-        names.append(o.mention)
+        names.append(o.name or o.urn.split(":")[-1])
     return f"**Owners (from DataHub):** {', '.join(names)}"
 
 
