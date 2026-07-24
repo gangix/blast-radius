@@ -88,3 +88,38 @@ def _change_title(change: Change) -> str:
     if k is ChangeKind.LOGIC_CHANGE:
         return f"Logic change in `{t}`"
     return f"Change `{t}`"
+
+
+_FOOTER = "_Deterministic analysis from DataHub lineage + 30-day query history._"
+
+
+def _ranked(assessments: list[Assessment]) -> list[Assessment]:
+    # Highest blast-radius score first; stable for equal scores.
+    return sorted(assessments, key=lambda a: a.score, reverse=True)
+
+
+def _section(a: Assessment) -> list[str]:
+    lines = [f"### {a.emoji} {_change_title(a.change)}", ""]
+    lines += [f"- {r}" for r in a.reasons]
+    return lines
+
+
+def render_comment(
+    assessments: list[Assessment],
+    *,
+    ctx: CommentContext | None = None,
+) -> str:
+    ctx = ctx or CommentContext()
+    verdict = _worst_of(assessments)
+    all_pass = all(a.verdict is Verdict.PASS for a in assessments)
+
+    lines: list[str] = [ctx.marker, ""]
+    lines += [f"## {verdict.emoji} Blast Radius — {verdict.label}", ""]
+    lines += [_summary_line(assessments, all_pass), ""]
+
+    for a in _ranked(assessments):
+        lines += _section(a)
+        lines.append("")
+
+    lines += ["---", _FOOTER]
+    return "\n".join(lines).rstrip() + "\n"
