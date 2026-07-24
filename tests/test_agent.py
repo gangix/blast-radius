@@ -184,3 +184,21 @@ def test_review_surfaces_fetch_warnings_but_still_reports():
         [ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")])
     assert report.warnings  # a downstream failure was recorded
     assert report.markdown  # comment still produced
+
+
+# ------------------------------------------------------------- live DataHub
+@pytest.mark.integration
+def test_review_hard_break_live_datahub():
+    """End-to-end against a live, seeded DataHub. Auto-skips if unreachable."""
+    agent = BlastRadiusAgent()
+    try:
+        urns = agent.client.dataset_urns()
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"DataHub not reachable: {exc}")
+    if not any("order_details" in u for u in urns):
+        pytest.skip("DataHub reachable but demo data not seeded")
+
+    report = agent.review(
+        [ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")])
+    assert report.verdict is Verdict.BREAK
+    assert "❌" in report.markdown

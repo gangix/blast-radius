@@ -10,21 +10,24 @@ The package is split so the *facts* are deterministic and the *phrasing* is not:
     datahub_client  the only place that talks to DataHub — the source of truth
 """
 
+from .agent import BlastRadiusAgent, DataHubUnavailable, Report
 from .comment import CommentContext, render_comment
 from .config import DataHubConfig
 from .datahub_client import DataHubClient
 from .diff_parser import Change, ChangeKind, DiffParser, FileChange, FileStatus
 from .models import LineageNode, Owner, QueryRef, Usage
 from .resolver import ResolvedTable, TableResolver
-from .severity import Assessment, ImpactFacts, ImpactSignals, Verdict, assess
+from .severity import Assessment, ImpactFacts, ImpactSignals, Verdict, assess, worst_verdict
 
 __all__ = [
     "Assessment",
+    "BlastRadiusAgent",
     "Change",
     "ChangeKind",
     "CommentContext",
     "DataHubClient",
     "DataHubConfig",
+    "DataHubUnavailable",
     "DiffParser",
     "FileChange",
     "FileStatus",
@@ -33,12 +36,14 @@ __all__ = [
     "LineageNode",
     "Owner",
     "QueryRef",
+    "Report",
     "ResolvedTable",
     "TableResolver",
     "Usage",
     "Verdict",
     "assess",
     "render_comment",
+    "worst_verdict",
 ]
 
 __version__ = "0.1.0"
