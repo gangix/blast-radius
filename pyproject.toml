@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "blast-radius"
+version = "0.1.0"
+description = "PR Impact Guardian for data teams — a pre-merge blast-radius review powered by DataHub lineage, query history, and ownership."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [{ name = "Blast Radius" }]
+keywords = ["datahub", "data-lineage", "impact-analysis", "ci", "code-review"]
+dependencies = [
+    "acryl-datahub>=1.6,<2",
+    "sqlglot>=25",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.5",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/blast_radius"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: talks to a live DataHub instance (skipped if unreachable)",
+]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

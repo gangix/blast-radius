@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# Generated seed artifacts (rebuilt by datapack/clean_datapack.py)
+datapack/*.clean.json
+
+# Environment
+.env
+
+# IDE
+.idea/
