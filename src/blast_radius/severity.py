@@ -57,6 +57,18 @@ class Verdict(str, Enum):
         }[self.value]
 
 
+_VERDICT_RANK = {Verdict.PASS: 0, Verdict.WARN: 1, Verdict.BREAK: 2}
+
+
+def worst_verdict(assessments: list[Assessment]) -> Verdict:
+    """The most severe verdict across ``assessments`` (PASS if empty)."""
+    return max(
+        (a.verdict for a in assessments),
+        key=lambda v: _VERDICT_RANK[v],
+        default=Verdict.PASS,
+    )
+
+
 _CONFIDENCE_ORDER = ("low", "medium", "high")
 
 

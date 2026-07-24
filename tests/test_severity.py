@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+
 from blast_radius import (
     Change,
     ChangeKind,
@@ -13,6 +15,7 @@ from blast_radius import (
     Verdict,
     assess,
 )
+from blast_radius.severity import worst_verdict
 
 
 def resolved(name: str = "order_entry_db.analytics.order_details") -> ResolvedTable:
@@ -169,3 +172,18 @@ def test_assess_populates_downstream_consumers():
     )
     a = assess(facts)
     assert [n.entity_type for n in a.downstream_consumers] == ["DASHBOARD", "DASHBOARD"]
+
+
+# ------------------------------------------------------------- worst_verdict
+def test_worst_verdict_empty_is_pass():
+    assert worst_verdict([]) is Verdict.PASS
+
+
+def test_worst_verdict_break_dominates():
+    base = assess(ImpactFacts(change=Change(ChangeKind.DROP_COLUMN, "t", column="c"), resolved=None))
+    p = dataclasses.replace(base, verdict=Verdict.PASS)
+    w = dataclasses.replace(base, verdict=Verdict.WARN)
+    b = dataclasses.replace(base, verdict=Verdict.BREAK)
+    assert worst_verdict([p, p]) is Verdict.PASS
+    assert worst_verdict([p, w]) is Verdict.WARN
+    assert worst_verdict([p, w, b]) is Verdict.BREAK
