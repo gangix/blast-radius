@@ -41,8 +41,8 @@ def test_write_assessment_calls_save_document(monkeypatch):
     urn = _client(monkeypatch).write_assessment("urn:li:dataset:(x,y,PROD)", title="T", body_md="B",
                                                 related_assets=["urn:li:chart:c"])
     assert urn == "urn:li:document:1"
-    assert calls["title"] == "T" and calls["urn"] == "urn:li:dataset:(x,y,PROD)" \
-        and calls["related_assets"] == ["urn:li:chart:c"]
+    assert calls["title"] == "T" and "urn" not in calls
+    assert calls["related_assets"] == ["urn:li:dataset:(x,y,PROD)", "urn:li:chart:c"]
 
 
 def test_tag_change_calls_add_tags(monkeypatch):

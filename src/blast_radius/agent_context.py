@@ -70,8 +70,8 @@ class AgentContextClient:
                          related_assets: list[str]) -> str | None:
         with self._ctx():
             res = save_document(document_type="Analysis", title=title,
-                                content=body_md, urn=dataset_urn,
-                                related_assets=related_assets)
+                                content=body_md,
+                                related_assets=[dataset_urn, *related_assets])
         if not res.get("success"):
             raise AgentContextError(f"save_document failed: {res.get('message')}")
         return res.get("urn")
