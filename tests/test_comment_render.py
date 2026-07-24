@@ -163,13 +163,53 @@ def test_impact_cell_table_change_may_use_downstream():
 
 
 def test_affected_assets_render_as_clickable_links():
+    # break_assessment_with_queries() is an ADD_COLUMN change -> a COLUMN kind,
+    # so the consumers header is the scoped "Downstream of ..." form, not
+    # "Affected assets:" (see test_consumers_header_scoped_by_change_kind).
     a = dataclasses.replace(
         break_assessment_with_queries(),
         downstream_consumers=[LineageNode("urn:li:dashboard:(tableau,d0)", "DASHBOARD", 3,
                                           "Finance Overview")],
     )
     out = render_comment([a])
-    assert "**Affected assets:**" in out
+    assert "**Downstream of `orders`** (table-level; field bindings not verified):" in out
     assert ("[Finance Overview]"
             "(https://datahub.example.com/dashboard/"
             "urn%3Ali%3Adashboard%3A%28tableau%2Cd0%29)") in out
+
+
+def test_breaking_query_name_with_pipe_is_escaped():
+    a = dataclasses.replace(
+        pass_assessment("discount_amount"),
+        verdict=Verdict.BREAK,
+        breaking_queries=[query("Daily revenue | EMEA", "sarah")],
+    )
+    out = render_comment([a])
+    assert "Daily revenue \\| EMEA" in out
+    # The row must still have exactly the two data columns -- no phantom
+    # column from the raw, unescaped "|" in the query name.
+    row = next(ln for ln in out.splitlines() if "Daily revenue" in ln and ln.startswith("|"))
+    assert row == "| Daily revenue \\| EMEA | sarah |"
+
+
+def test_consumers_header_scoped_by_change_kind():
+    dashboard = LineageNode("urn:li:dashboard:(tableau,d0)", "DASHBOARD", 3, "Finance Overview")
+
+    column_change = dataclasses.replace(
+        pass_assessment("discount_amount"),
+        verdict=Verdict.WARN,
+        downstream_consumers=[dashboard],
+    )
+    out = render_comment([column_change])
+    assert "**Downstream of `orders`** (table-level; field bindings not verified):" in out
+    assert "**Affected assets:**" not in out
+
+    table_change = dataclasses.replace(
+        pass_assessment(),
+        change=Change(ChangeKind.DROP_TABLE, "analytics.order_details"),
+        verdict=Verdict.BREAK,
+        downstream_consumers=[dashboard],
+    )
+    out = render_comment([table_change])
+    assert "**Affected assets:**" in out
+    assert "**Downstream of" not in out

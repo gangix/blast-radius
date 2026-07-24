@@ -35,7 +35,7 @@ FROM order_details
 
 </details>
 
-**Affected assets:**
+**Downstream of `analytics.order_details`** (table-level; field bindings not verified):
 - [Dashboard 0](https://datahub.example.com/dashboard/urn%3Ali%3Adashboard%3A%28tableau%2Cd0%29)
 - [Dashboard 1](https://datahub.example.com/dashboard/urn%3Ali%3Adashboard%3A%28tableau%2Cd1%29)
 - [Dashboard 2](https://datahub.example.com/dashboard/urn%3Ali%3Adashboard%3A%28tableau%2Cd2%29)

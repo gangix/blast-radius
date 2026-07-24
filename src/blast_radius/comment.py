@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from urllib.parse import quote
 
 from .diff_parser import Change, ChangeKind
-from .models import LineageNode
 from .severity import Assessment, Verdict
 
 # Column-scoped change kinds — Fix #1 forbids table-level counts in their phrasing.
@@ -103,6 +102,10 @@ def _plural(n: int, noun: str) -> str:
     return f"{n} {noun}" + ("" if n == 1 else "s")
 
 
+def _cell(s: str) -> str:
+    return s.replace("|", "\\|").replace("\n", " ").replace("\r", " ")
+
+
 def _impact_cell(a: Assessment) -> str:
     s = a.signals
     if a.change.kind in _COLUMN_KINDS:
@@ -131,7 +134,7 @@ def _at_a_glance(assessments: list[Assessment]) -> list[str]:
     lines = ["| Change | Verdict | Impact |", "|---|---|---|"]
     for a in _ranked(assessments):
         lines.append(
-            f"| {_change_title(a.change)} | {a.emoji} {a.verdict.label} | {_impact_cell(a)} |"
+            f"| {_cell(_change_title(a.change))} | {a.emoji} {a.verdict.label} | {_impact_cell(a)} |"
         )
     return lines
 
@@ -143,7 +146,7 @@ def _query_label(q) -> str:
 def _queries_block(a: Assessment) -> list[str]:
     lines = ["**Breaking queries**", "", "| Query | Author |", "|---|---|"]
     for q in a.breaking_queries:
-        lines.append(f"| {_query_label(q)} | {q.author or '—'} |")
+        lines.append(f"| {_cell(_query_label(q))} | {_cell(q.author or '—')} |")
     for q in a.breaking_queries:
         if q.sql:
             lines += ["", f"<details><summary>SQL — {_query_label(q)}</summary>", "",
@@ -151,9 +154,14 @@ def _queries_block(a: Assessment) -> list[str]:
     return lines
 
 
-def _consumers_block(consumers: list[LineageNode], ctx: CommentContext) -> list[str]:
-    lines = ["**Affected assets:**"]
-    for n in consumers:
+def _consumers_block(a: Assessment, ctx: CommentContext) -> list[str]:
+    if a.change.kind in _COLUMN_KINDS:
+        table = a.resolved.matched_name if a.resolved else a.change.table
+        header = f"**Downstream of `{table}`** (table-level; field bindings not verified):"
+    else:
+        header = "**Affected assets:**"
+    lines = [header]
+    for n in a.downstream_consumers:
         lines.append(f"- [{n.label}]({_entity_url(ctx.link_base, n.entity_type, n.urn)})")
     return lines
 
@@ -174,7 +182,7 @@ def _section_body(a: Assessment, ctx: CommentContext) -> list[str]:
     if a.breaking_queries:
         body += ["", *_queries_block(a)]
     if a.downstream_consumers:
-        body += ["", *_consumers_block(a.downstream_consumers, ctx)]
+        body += ["", *_consumers_block(a, ctx)]
     if a.owners:
         body += ["", _owners_line(a.owners)]
     return body
