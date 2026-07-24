@@ -17,3 +17,6 @@ datapack/*.clean.json
 
 # IDE
 .idea/
+
+# Local agent scratch / personal settings (not for the repo)
+.claude/settings.local.json
