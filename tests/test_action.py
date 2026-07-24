@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from blast_radius import DataHubUnavailable, FileChange, FileStatus, Report, Verdict, action
 from blast_radius.action import (
     MARKER,
@@ -109,6 +111,31 @@ def test_post_check_sets_conclusion():
     joined = " ".join(calls[0])
     assert "check-runs" in joined and "--method" in joined and "POST" in joined
     assert "--input" in joined  # conclusion now in JSON payload
+    argv = calls[0]
+    input_path = argv[argv.index("--input") + 1]
+    with open(input_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    assert payload["conclusion"] == "failure"
+    assert payload["head_sha"] == "sha1"
+    assert payload["name"] == "Blast Radius"
+    assert payload["output"]["title"] == "t"
+
+
+def test_git_show_absent_returns_none_but_reraises_real_error():
+    import subprocess
+
+    from blast_radius.action import _git_show
+
+    def absent(args):
+        raise subprocess.CalledProcessError(128, args, stderr="fatal: path 'x' does not exist in 'base'")
+
+    assert _git_show(absent, "base", "x") is None
+
+    def broken(args):
+        raise subprocess.CalledProcessError(128, args, stderr="fatal: not a git repository")
+
+    with pytest.raises(subprocess.CalledProcessError):
+        _git_show(broken, "base", "x")
 
 
 # -- main() flow tests (monkeypatched) ------------------------------------------
@@ -177,3 +204,35 @@ def test_main_datahub_unavailable_is_neutral(tmp_path, monkeypatch):
     assert action.main() == 0
     assert seen["concl"] == "neutral"
     assert seen["body"].startswith(MARKER) and "could not" in seen["body"].lower()
+
+
+def test_main_returns_0_when_posting_raises(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+    monkeypatch.setattr(action, "collect_changes", lambda *a, **k: [FC])
+    report = Report(assessments=[0], verdict=Verdict.BREAK, markdown="MD", warnings=[])
+
+    class FakeAgent:
+        def __init__(self, **k):
+            pass
+
+        def review(self, changes):
+            return report
+
+    monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
+
+    def boom(*a, **k):
+        raise RuntimeError("403 forbidden")
+
+    monkeypatch.setattr(action, "upsert_comment", boom)
+    monkeypatch.setattr(action, "post_check", boom)
+    assert action.main() == 0  # posting failures must not fail the job
+
+
+def test_main_returns_0_when_collect_changes_raises(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+
+    def boom(*a, **k):
+        raise RuntimeError("git error")
+
+    monkeypatch.setattr(action, "collect_changes", boom)
+    assert action.main() == 0

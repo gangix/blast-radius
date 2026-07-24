@@ -60,11 +60,16 @@ def check_title(report, unavailable: bool) -> str:
 
 
 # -- I/O shell (injected run) ----------------------------------------------
+_ABSENT_MARKERS = ("does not exist", "exists on disk, but not in", "bad revision", "unknown revision")
+
+
 def _git_show(run: Callable[[list[str]], str], ref: str, path: str) -> str | None:
     try:
         return run(["git", "show", f"{ref}:{path}"])
-    except Exception:  # noqa: BLE001 - path absent at this ref (added/removed)
-        return None
+    except subprocess.CalledProcessError as exc:
+        if any(m in (exc.stderr or "") for m in _ABSENT_MARKERS):
+            return None
+        raise
 
 
 def collect_changes(base: str, head: str, *, run: Callable[[list[str]], str]) -> list[FileChange]:
@@ -77,6 +82,8 @@ def collect_changes(base: str, head: str, *, run: Callable[[list[str]], str]) ->
         status = parts[0]
         code = status[:1].upper()
         if code in ("R", "C"):
+            if len(parts) < 3:
+                continue
             old_path, path = parts[1], parts[2]
         else:
             old_path, path = None, parts[1]
@@ -130,6 +137,13 @@ def _run(args: list[str]) -> str:
     return subprocess.run(args, check=True, capture_output=True, text=True).stdout
 
 
+def _safe_io(fn, label: str) -> None:
+    try:
+        fn()
+    except Exception as exc:  # noqa: BLE001 - a posting failure must not fail the PR job
+        print(f"::warning::blast-radius: {label} failed: {exc}", file=sys.stderr)
+
+
 def _infra_comment(exc: Exception) -> str:
     return (
         f"{MARKER}\n\n## ⚠️ Blast Radius — could not analyze\n\n"
@@ -154,7 +168,11 @@ def main() -> int:
     base, head, number = pr["base"]["sha"], pr["head"]["sha"], pr["number"]
     repo = os.environ["GITHUB_REPOSITORY"]
 
-    changes = collect_changes(base, head, run=_run)
+    try:
+        changes = collect_changes(base, head, run=_run)
+    except Exception as exc:  # noqa: BLE001
+        print(f"::warning::blast-radius: could not read changed files: {exc}", file=sys.stderr)
+        return 0
     if not changes:
         print("No .sql/.ddl changes; staying silent.")
         return 0
@@ -169,13 +187,15 @@ def main() -> int:
     except DataHubUnavailable as exc:
         report, unavailable, body = None, True, _infra_comment(exc)
 
-    upsert_comment(repo, number, body, run=_run)
     verdict = report.verdict if report else Verdict.PASS
     summary = (report.markdown if report else body)[:900]
-    post_check(
-        repo, head, check_conclusion(verdict, unavailable),
-        title=check_title(report, unavailable), summary=summary, run=_run
-    )
+    conclusion = check_conclusion(verdict, unavailable)
+    title = check_title(report, unavailable)
+
+    _safe_io(lambda: upsert_comment(repo, number, body, run=_run), "posting comment")
+    _safe_io(lambda: post_check(repo, head, conclusion, title=title, summary=summary, run=_run),
+             "posting check")
+
     for w in (report.warnings if report else []):
         print(f"::warning::{w}")
     return 0
