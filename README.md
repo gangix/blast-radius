@@ -33,6 +33,36 @@ GitHub PR ─▶ GitHub Action ─▶ Agent (Python)
 
 **Deterministic core, LLM at the edges.** Every downstream fact comes from DataHub via `blast_radius.datahub_client` — no hallucinated lineage. The LLM only phrases what the graph already proves.
 
+## Use it as a GitHub Action
+
+Add `.github/workflows/blast-radius.yml` to a data repo (see
+[`examples/demo-workflow.yml`](examples/demo-workflow.yml)):
+
+```yaml
+name: Blast Radius
+on: pull_request
+permissions:
+  pull-requests: write
+  checks: write
+  contents: read
+jobs:
+  blast-radius:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: OWNER/blast-radius@v1
+        with:
+          datahub-gms-url: ${{ secrets.DATAHUB_GMS_URL }}
+          datahub-token:   ${{ secrets.DATAHUB_TOKEN }}
+          link-base:       ${{ secrets.DATAHUB_FRONTEND_URL }}
+```
+
+On every pull request the Action reads the changed `.sql`/`.ddl` files, asks
+DataHub what breaks downstream, and posts (and keeps updated) a blast-radius
+comment plus a **Blast Radius** check: ❌ breaking → failing, ⚠️ review →
+neutral, ✅ safe → success. The check is advisory (non-blocking) unless you make
+it a required check. `datahub-gms-url` must be reachable from the runner (a
+hosted DataHub, or your instance exposed via a tunnel / self-hosted runner).
+
 ## How DataHub makes this possible
 
 The product is impossible without a context platform. It relies on:

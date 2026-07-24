@@ -1,0 +1,16 @@
+# Drop this into a data repo at .github/workflows/blast-radius.yml
+name: Blast Radius
+on: pull_request
+permissions:
+  pull-requests: write   # post/update the comment
+  checks: write          # create the "Blast Radius" check run
+  contents: read
+jobs:
+  blast-radius:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: OWNER/blast-radius@v1   # replace OWNER with the published action repo
+        with:
+          datahub-gms-url: ${{ secrets.DATAHUB_GMS_URL }}
+          datahub-token:   ${{ secrets.DATAHUB_TOKEN }}
+          link-base:       ${{ secrets.DATAHUB_FRONTEND_URL }}

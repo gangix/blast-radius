@@ -1,0 +1,54 @@
+name: "Blast Radius"
+description: "Pre-merge blast-radius review for data PRs, powered by DataHub lineage + query history."
+branding:
+  icon: "alert-triangle"
+  color: "orange"
+inputs:
+  datahub-gms-url:
+    description: "DataHub GMS (API) URL, reachable from the runner."
+    required: true
+  datahub-token:
+    description: "DataHub access token."
+    required: false
+    default: ""
+  github-token:
+    description: "Token used to post the comment and check run."
+    required: false
+    default: ${{ github.token }}
+  link-base:
+    description: "DataHub frontend base URL for clickable asset links."
+    required: false
+    default: ""
+  datahub-prefix:
+    description: "Instance prefix baked into dataset URNs."
+    required: false
+    default: ""
+  platform:
+    description: "Warehouse platform segment of dataset URNs."
+    required: false
+    default: ""
+  fabric:
+    description: "DataHub fabric / environment segment."
+    required: false
+    default: ""
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+    - shell: bash
+      run: pip install "$GITHUB_ACTION_PATH"
+    - shell: bash
+      run: blast-radius-review
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        DATAHUB_GMS_URL: ${{ inputs.datahub-gms-url }}
+        DATAHUB_GMS_TOKEN: ${{ inputs.datahub-token }}
+        BLAST_RADIUS_LINK_BASE: ${{ inputs.link-base }}
+        BLAST_RADIUS_PREFIX: ${{ inputs.datahub-prefix }}
+        BLAST_RADIUS_PLATFORM: ${{ inputs.platform }}
+        BLAST_RADIUS_FABRIC: ${{ inputs.fabric }}
