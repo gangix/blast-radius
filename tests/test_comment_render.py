@@ -34,3 +34,17 @@ def test_overall_verdict_is_worst_of():
     brk = dataclasses.replace(a, verdict=Verdict.BREAK)
     out = render_comment([a, brk])
     assert "## ❌ Blast Radius — Breaking change" in out
+
+
+def test_pass_section_collapses_when_not_all_pass():
+    a = pass_assessment("gift_wrap")
+    brk = dataclasses.replace(a, verdict=Verdict.BREAK)
+    out = render_comment([a, brk])
+    assert "<details>" in out
+    assert "<summary>✅ Add column `gift_wrap`</summary>" in out
+
+
+def test_all_pass_pr_has_no_collapse():
+    out = render_comment([pass_assessment("a"), pass_assessment("b")])
+    assert "<details>" not in out
+    assert "### ✅ Add column `a`" in out

@@ -98,10 +98,16 @@ def _ranked(assessments: list[Assessment]) -> list[Assessment]:
     return sorted(assessments, key=lambda a: a.score, reverse=True)
 
 
-def _section(a: Assessment) -> list[str]:
-    lines = [f"### {a.emoji} {_change_title(a.change)}", ""]
-    lines += [f"- {r}" for r in a.reasons]
-    return lines
+def _section_body(a: Assessment) -> list[str]:
+    return [f"- {r}" for r in a.reasons]
+
+
+def _section(a: Assessment, *, collapse: bool) -> list[str]:
+    title = f"{a.emoji} {_change_title(a.change)}"
+    body = _section_body(a)
+    if collapse:
+        return ["<details>", f"<summary>{title}</summary>", "", *body, "", "</details>"]
+    return [f"### {title}", "", *body]
 
 
 def render_comment(
@@ -118,7 +124,8 @@ def render_comment(
     lines += [_summary_line(assessments, all_pass), ""]
 
     for a in _ranked(assessments):
-        lines += _section(a)
+        collapse = a.verdict is Verdict.PASS and not all_pass
+        lines += _section(a, collapse=collapse)
         lines.append("")
 
     lines += ["---", _FOOTER]
