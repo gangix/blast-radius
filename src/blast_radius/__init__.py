@@ -10,6 +10,7 @@ The package is split so the *facts* are deterministic and the *phrasing* is not:
     datahub_client  the only place that talks to DataHub — the source of truth
 """
 
+from .comment import CommentContext, render_comment
 from .config import DataHubConfig
 from .datahub_client import DataHubClient
 from .diff_parser import Change, ChangeKind, DiffParser, FileChange, FileStatus
@@ -21,6 +22,7 @@ __all__ = [
     "Assessment",
     "Change",
     "ChangeKind",
+    "CommentContext",
     "DataHubClient",
     "DataHubConfig",
     "DiffParser",
@@ -36,6 +38,7 @@ __all__ = [
     "Usage",
     "Verdict",
     "assess",
+    "render_comment",
 ]
 
 __version__ = "0.1.0"
