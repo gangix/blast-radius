@@ -10,7 +10,8 @@ The package is split so the *facts* are deterministic and the *phrasing* is not:
     datahub_client  the only place that talks to DataHub — the source of truth
 """
 
-from .agent import BlastRadiusAgent, DataHubUnavailable, Report
+from .agent import BlastRadiusAgent, DataHubUnavailable, Report, WriteBackResult
+from .agent_context import AgentContextClient, AgentContextError
 from .comment import CommentContext, render_comment
 from .config import DataHubConfig
 from .datahub_client import DataHubClient
@@ -20,6 +21,8 @@ from .resolver import ResolvedTable, TableResolver
 from .severity import Assessment, ImpactFacts, ImpactSignals, Verdict, assess, worst_verdict
 
 __all__ = [
+    "AgentContextClient",
+    "AgentContextError",
     "Assessment",
     "BlastRadiusAgent",
     "Change",
@@ -41,6 +44,7 @@ __all__ = [
     "TableResolver",
     "Usage",
     "Verdict",
+    "WriteBackResult",
     "assess",
     "render_comment",
     "worst_verdict",

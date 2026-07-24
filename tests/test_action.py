@@ -236,3 +236,22 @@ def test_main_returns_0_when_collect_changes_raises(tmp_path, monkeypatch):
 
     monkeypatch.setattr(action, "collect_changes", boom)
     assert action.main() == 0
+
+
+def test_main_enables_writeback_from_env(tmp_path, monkeypatch):
+    _event(tmp_path, monkeypatch)
+    monkeypatch.setenv("BLAST_RADIUS_WRITE_BACK", "true")
+    captured = {}
+    monkeypatch.setattr(action, "collect_changes", lambda *a, **k: [FC])
+
+    class FakeAgent:
+        def __init__(self, **k): captured.update(k)
+        def review(self, changes):
+            return Report(assessments=[0], verdict=Verdict.BREAK, markdown="MD", warnings=[])
+
+    monkeypatch.setattr(action, "BlastRadiusAgent", FakeAgent)
+    monkeypatch.setattr(action, "AgentContextClient", lambda cfg: "CTX")
+    monkeypatch.setattr(action, "upsert_comment", lambda *a, **k: None)
+    monkeypatch.setattr(action, "post_check", lambda *a, **k: None)
+    assert action.main() == 0
+    assert captured.get("write_back") is True and captured.get("context_client") == "CTX"

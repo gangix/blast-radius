@@ -16,7 +16,9 @@ import tempfile
 from collections.abc import Callable
 
 from .agent import BlastRadiusAgent, DataHubUnavailable
+from .agent_context import AgentContextClient
 from .comment import CommentContext
+from .config import DataHubConfig
 from .diff_parser import FileChange, FileStatus
 from .severity import Verdict
 
@@ -181,8 +183,11 @@ def main() -> int:
         link_base=os.getenv("BLAST_RADIUS_LINK_BASE")
         or CommentContext().link_base
     )
+    context_client = AgentContextClient(DataHubConfig.from_env())
+    write_back = os.getenv("BLAST_RADIUS_WRITE_BACK", "").lower() in ("1", "true", "yes")
     try:
-        report = BlastRadiusAgent(comment_ctx=ctx).review(changes)
+        report = BlastRadiusAgent(comment_ctx=ctx, context_client=context_client,
+                                  write_back=write_back).review(changes)
         body, unavailable = report.markdown, False
     except DataHubUnavailable as exc:
         report, unavailable, body = None, True, _infra_comment(exc)
@@ -195,6 +200,10 @@ def main() -> int:
     _safe_io(lambda: upsert_comment(repo, number, body, run=_run), "posting comment")
     _safe_io(lambda: post_check(repo, head, conclusion, title=title, summary=summary, run=_run),
              "posting check")
+
+    if report and report.writeback and report.writeback.document_urn:
+        print(f"::notice::Blast Radius wrote back to DataHub: doc + "
+              f"tagged {report.writeback.tagged_columns}")
 
     for w in (report.warnings if report else []):
         print(f"::warning::{w}")

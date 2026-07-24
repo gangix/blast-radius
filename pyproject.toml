@@ -13,6 +13,7 @@ authors = [{ name = "Blast Radius" }]
 keywords = ["datahub", "data-lineage", "impact-analysis", "ci", "code-review"]
 dependencies = [
     "acryl-datahub>=1.6,<2",
+    "datahub-agent-context>=1.5,<2",
     "sqlglot>=25",
 ]
 

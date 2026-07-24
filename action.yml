@@ -31,6 +31,10 @@ inputs:
     description: "DataHub fabric / environment segment."
     required: false
     default: ""
+  write-back:
+    description: "Write the blast-radius result back to DataHub (doc + tag). Requires a write-scoped datahub-token."
+    required: false
+    default: "false"
 runs:
   using: "composite"
   steps:
@@ -52,3 +56,4 @@ runs:
         BLAST_RADIUS_PREFIX: ${{ inputs.datahub-prefix }}
         BLAST_RADIUS_PLATFORM: ${{ inputs.platform }}
         BLAST_RADIUS_FABRIC: ${{ inputs.fabric }}
+        BLAST_RADIUS_WRITE_BACK: ${{ inputs.write-back }}
