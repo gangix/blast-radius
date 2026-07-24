@@ -12,12 +12,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import TypeVar
 
+from .agent_context import AgentContextClient
 from .comment import CommentContext, render_comment
 from .config import DataHubConfig
 from .datahub_client import DataHubClient
 from .diff_parser import Change, ChangeKind, DiffParser, FileChange
 from .resolver import ResolvedTable, TableResolver
 from .severity import Assessment, ImpactFacts, Verdict, assess, worst_verdict
+from .writeback import TAGS, render_document
 
 _T = TypeVar("_T")
 
@@ -37,11 +39,19 @@ class DataHubUnavailable(RuntimeError):
 
 
 @dataclass(frozen=True)
+class WriteBackResult:
+    document_urn: str | None
+    tagged_columns: list[str]
+    messages: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
 class Report:
     assessments: list[Assessment]
     verdict: Verdict
     markdown: str
     warnings: list[str] = field(default_factory=list)
+    writeback: WriteBackResult | None = None
 
 
 class BlastRadiusAgent:
@@ -54,12 +64,16 @@ class BlastRadiusAgent:
         config: DataHubConfig | None = None,
         comment_ctx: CommentContext | None = None,
         prefer_platform: str | None = None,
+        context_client: AgentContextClient | None = None,
+        write_back: bool = False,
     ) -> None:
         self.config = config or DataHubConfig.from_env()
         self.client = client or DataHubClient(self.config)
         self.resolver = TableResolver(self.client, prefer_platform=prefer_platform)
         self.comment_ctx = comment_ctx
         self.diff_parser = DiffParser()
+        self.context_client = context_client
+        self.write_back = write_back
 
     # -- fact gathering ---------------------------------------------------- #
     def gather(
@@ -79,8 +93,7 @@ class BlastRadiusAgent:
         warnings = [] if warnings is None else warnings
         urn = resolved.urn
 
-        facts.downstream = self._memo(cache, "downstream", urn,
-                                      lambda: self.client.downstream(urn), [], change, warnings)
+        facts.downstream = self._downstream(urn, cache, change, warnings)
         facts.usage = self._memo(cache, "usage", urn,
                                  lambda: self.client.usage(urn), None, change, warnings)
         facts.owners = self._memo(cache, "owners", urn,
@@ -111,17 +124,47 @@ class BlastRadiusAgent:
             cache[key] = self._safe(fn, default, kind, change, warnings)
         return cache[key]
 
+    def _downstream(self, urn, cache, change, warnings):
+        if self.context_client is not None:
+            key = ("downstream", urn)
+            if key in cache:
+                return cache[key]
+            try:
+                nodes = self.context_client.downstream(urn)
+                cache[key] = nodes
+                return nodes
+            except Exception as exc:  # noqa: BLE001 - Kit read must never break a review
+                warnings.append(f"Kit lineage read failed for {change.table}; used SDK: {exc}")
+        return self._memo(cache, "downstream", urn, lambda: self.client.downstream(urn), [], change, warnings)
+
     # -- orchestration ----------------------------------------------------- #
     def review(self, file_changes: list[FileChange]) -> Report:
         changes = self.diff_parser.parse(file_changes)
         assessments, warnings = self.assess_changes(changes)
         markdown = render_comment(assessments, ctx=self.comment_ctx)
-        return Report(
-            assessments=assessments,
-            verdict=worst_verdict(assessments),
-            markdown=markdown,
-            warnings=warnings,
-        )
+        writeback = self._write_back(assessments, warnings) if self.write_back else None
+        return Report(assessments=assessments, verdict=worst_verdict(assessments),
+                      markdown=markdown, warnings=warnings, writeback=writeback)
+
+    def _write_back(self, assessments, warnings):
+        if self.context_client is None:
+            return None
+        doc_urn, tagged, msgs = None, [], []
+        for a in assessments:
+            if a.verdict is Verdict.PASS or a.resolved is None:
+                continue
+            tag = TAGS.get(a.verdict)
+            title, body = render_document(a)
+            related = [n.urn for n in a.downstream_consumers]
+            try:
+                doc_urn = self.context_client.write_assessment(
+                    a.resolved.urn, title=title, body_md=body, related_assets=related)
+                if tag and a.change.column:
+                    self.context_client.ensure_tag(tag[0], name=tag[1], description=tag[2])
+                    tagged += self.context_client.tag_change(a.resolved.urn, [a.change.column], tag[0])
+            except Exception as exc:  # noqa: BLE001 - write-back must never break a review
+                msgs.append(f"write-back failed for {a.change.table}: {exc}")
+        return WriteBackResult(document_urn=doc_urn, tagged_columns=tagged, messages=msgs)
 
     def assess_changes(self, changes: list[Change]) -> tuple[list[Assessment], list[str]]:
         resolved_map = self._resolve_all(changes)

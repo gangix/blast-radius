@@ -202,3 +202,56 @@ def test_review_hard_break_live_datahub():
         [ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")])
     assert report.verdict is Verdict.BREAK
     assert "❌" in report.markdown
+
+
+class FakeContext:
+    def __init__(self, *, down=None, fail_down=False):
+        self._down = down or []
+        self._fail = fail_down
+        self.docs = []
+        self.tags = []
+        self.ensured = []
+    def downstream(self, urn, **k):
+        if self._fail:
+            raise RuntimeError("kit down")
+        return self._down
+    def ensure_tag(self, tag_urn, **k): self.ensured.append(tag_urn)
+    def write_assessment(self, urn, **k): self.docs.append((urn, k)); return "urn:li:document:1"
+    def tag_change(self, urn, cols, tag_urn): self.tags.append((urn, cols, tag_urn)); return list(cols)
+
+
+def test_gather_uses_kit_downstream_when_context_present():
+    fc = FakeClient(q_col={(DS, "discount_amount"): [qref("q1")]})
+    ctx = FakeContext(down=dashboards(3))
+    agent = BlastRadiusAgent(client=fc, context_client=ctx)
+    facts = agent.gather(Change(ChangeKind.DROP_COLUMN, "analytics.order_details", column="discount_amount"),
+                         resolved())
+    assert len(facts.downstream) == 3            # came from the Kit
+    assert "downstream" not in {c[0] for c in fc.calls}  # SDK downstream not called
+
+
+def test_gather_falls_back_to_sdk_when_kit_downstream_fails():
+    fc = FakeClient(downstream={DS: dashboards(2)}, q_col={(DS, "c"): []})
+    ctx = FakeContext(fail_down=True)
+    agent = BlastRadiusAgent(client=fc, context_client=ctx)
+    warnings: list[str] = []
+    facts = agent.gather(Change(ChangeKind.DROP_COLUMN, "analytics.order_details", column="c"),
+                         resolved(), warnings=warnings)
+    assert len(facts.downstream) == 2 and any("lineage" in w.lower() or "kit" in w.lower() for w in warnings)
+
+
+def test_review_writes_back_when_enabled():
+    fc = FakeClient(usage={DS: usage_with({"discount_amount": 11})},
+                    q_col={(DS, "discount_amount"): [qref("Daily revenue")]})
+    ctx = FakeContext(down=dashboards(3))
+    agent = BlastRadiusAgent(client=fc, context_client=ctx, write_back=True)
+    report = agent.review([ddl("ALTER TABLE analytics.order_details DROP COLUMN discount_amount;")])
+    assert report.writeback is not None and report.writeback.document_urn == "urn:li:document:1"
+    assert "discount_amount" in report.writeback.tagged_columns
+    assert ctx.ensured and ctx.docs and ctx.tags       # tag ensured, doc saved, column tagged
+
+
+def test_review_no_writeback_when_disabled():
+    agent = BlastRadiusAgent(client=FakeClient(), context_client=FakeContext(), write_back=False)
+    report = agent.review([ddl("ALTER TABLE analytics.order_details DROP COLUMN gift_wrap;")])
+    assert report.writeback is None
