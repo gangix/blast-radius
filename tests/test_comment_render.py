@@ -106,3 +106,57 @@ def test_owners_with_null_name_never_surfaces_email():
     assert "@" not in owners_line, f"Owners line contains @: {owners_line}"
     # Must contain the URN tail (last colon-segment)
     assert "jdoe" in owners_line, f"URN tail 'jdoe' not in owners line: {owners_line}"
+
+
+from blast_radius.severity import ImpactSignals
+
+
+def with_signals(a, **kw):
+    base = {
+        "breaking_queries": 0,
+        "query_volume_per_day": 0,
+        "dashboards": 0,
+        "charts": 0,
+        "total_downstream": 0,
+        "breaking_query_users": 0,
+    }
+    base.update(kw)
+    return dataclasses.replace(a, signals=ImpactSignals(**base))
+
+
+def test_single_change_has_no_table():
+    out = render_comment([pass_assessment()])
+    assert "| Change | Verdict | Impact |" not in out
+
+
+def test_multi_change_table_ranks_and_scopes_columns():
+    # a hot column drop (score high) + a clean column add (score 0)
+    hot = with_signals(
+        dataclasses.replace(
+            pass_assessment("discount_amount"),
+            change=Change(ChangeKind.DROP_COLUMN, "order_details", column="discount_amount"),
+            verdict=Verdict.BREAK, score=90.0),
+        breaking_queries=2, query_volume_per_day=11, dashboards=3)
+    calm = with_signals(pass_assessment("gift_wrap"), dashboards=3)  # table has dashboards...
+    out = render_comment([calm, hot])  # deliberately unordered
+    table = out.split("| Change | Verdict | Impact |")[1]
+    # ranked: hot (score 90) before calm (score 0)
+    assert table.index("discount_amount") < table.index("gift_wrap")
+    # Fix #1: the clean column row must NOT advertise the table's 3 dashboards
+    calm_row = next(ln for ln in table.splitlines() if "gift_wrap" in ln)
+    assert "dashboard" not in calm_row
+    # the hot column row shows column-scoped impact
+    hot_row = next(ln for ln in table.splitlines() if "discount_amount" in ln)
+    assert "2 queries" in hot_row and "11 reads/day" in hot_row
+
+
+def test_impact_cell_table_change_may_use_downstream():
+    drop_tbl = with_signals(
+        dataclasses.replace(pass_assessment(),
+                            change=Change(ChangeKind.DROP_TABLE, "order_details"),
+                            verdict=Verdict.BREAK, score=50.0),
+        total_downstream=37, dashboards=3)
+    other = pass_assessment("x")
+    out = render_comment([drop_tbl, other])
+    row = next(ln for ln in out.splitlines() if "Drop table" in ln)
+    assert "37 downstream" in row and "3 dashboards" in row

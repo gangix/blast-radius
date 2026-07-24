@@ -98,6 +98,43 @@ def _ranked(assessments: list[Assessment]) -> list[Assessment]:
     return sorted(assessments, key=lambda a: a.score, reverse=True)
 
 
+def _plural(n: int, noun: str) -> str:
+    return f"{n} {noun}" + ("" if n == 1 else "s")
+
+
+def _impact_cell(a: Assessment) -> str:
+    s = a.signals
+    if a.change.kind in _COLUMN_KINDS:
+        # Fix #1: column scope only — never the table-level dashboard/downstream count.
+        if s.breaking_queries == 0 and s.query_volume_per_day == 0:
+            return "no query usage"
+        parts = [f"{s.breaking_queries} quer{'y' if s.breaking_queries == 1 else 'ies'}"]
+        if s.query_volume_per_day:
+            parts.append(f"~{s.query_volume_per_day} reads/day")
+        return " · ".join(parts)
+    # Table / logic change — table-level scope is legitimate here.
+    parts = []
+    if s.total_downstream:
+        parts.append(f"{s.total_downstream} downstream")
+    consumers = []
+    if s.dashboards:
+        consumers.append(_plural(s.dashboards, "dashboard"))
+    if s.charts:
+        consumers.append(_plural(s.charts, "chart"))
+    if consumers:
+        parts.append(" + ".join(consumers))
+    return " · ".join(parts) if parts else "no consumers"
+
+
+def _at_a_glance(assessments: list[Assessment]) -> list[str]:
+    lines = ["| Change | Verdict | Impact |", "|---|---|---|"]
+    for a in _ranked(assessments):
+        lines.append(
+            f"| {_change_title(a.change)} | {a.emoji} {a.verdict.label} | {_impact_cell(a)} |"
+        )
+    return lines
+
+
 def _query_label(q) -> str:
     return q.name or q.urn.split(":")[-1]
 
@@ -153,6 +190,10 @@ def render_comment(
     lines: list[str] = [ctx.marker, ""]
     lines += [f"## {verdict.emoji} Blast Radius — {verdict.label}", ""]
     lines += [_summary_line(assessments, all_pass), ""]
+
+    if len(assessments) > 1:
+        lines += _at_a_glance(assessments)
+        lines.append("")
 
     for a in _ranked(assessments):
         collapse = a.verdict is Verdict.PASS and not all_pass
