@@ -48,3 +48,43 @@ def test_all_pass_pr_has_no_collapse():
     out = render_comment([pass_assessment("a"), pass_assessment("b")])
     assert "<details>" not in out
     assert "### ✅ Add column `a`" in out
+
+
+from blast_radius import Owner, QueryRef
+
+
+def query(name, author, sql="SELECT 1"):
+    return QueryRef(urn=f"urn:li:query:{name}", name=name, description="", sql=sql,
+                    author=author, datasets=frozenset(), columns=frozenset())
+
+
+def break_assessment_with_queries():
+    a = pass_assessment("discount_amount")
+    return dataclasses.replace(
+        a,
+        verdict=Verdict.BREAK,
+        breaking_queries=[query("Daily revenue", "sarah"), query("Net margin", "james")],
+        owners=[Owner("urn:li:corpGroup:finance", "corpGroup", name="finance-team"),
+                Owner("urn:li:corpGroup:finance", "corpGroup", name="finance-team")],  # dup
+    )
+
+
+def test_breaking_queries_table_has_only_query_and_author():
+    out = render_comment([break_assessment_with_queries()])
+    assert "**Breaking queries**" in out
+    assert "| Query | Author |" in out
+    assert "| Daily revenue | sarah |" in out
+    assert "reads/day" not in out.split("**Breaking queries**")[1].split("<details>")[0]
+
+
+def test_query_sql_in_nested_details():
+    out = render_comment([break_assessment_with_queries()])
+    assert "<summary>SQL — Daily revenue</summary>" in out
+    assert "```sql" in out
+
+
+def test_owners_are_plain_text_deduped_no_at_sign():
+    out = render_comment([break_assessment_with_queries()])
+    assert "**Owners (from DataHub):** finance-team" in out
+    assert "@finance-team" not in out
+    assert out.count("finance-team") == 1  # deduped by urn

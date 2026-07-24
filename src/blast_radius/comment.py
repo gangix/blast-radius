@@ -98,8 +98,39 @@ def _ranked(assessments: list[Assessment]) -> list[Assessment]:
     return sorted(assessments, key=lambda a: a.score, reverse=True)
 
 
+def _query_label(q) -> str:
+    return q.name or q.urn.split(":")[-1]
+
+
+def _queries_block(a: Assessment) -> list[str]:
+    lines = ["**Breaking queries**", "", "| Query | Author |", "|---|---|"]
+    for q in a.breaking_queries:
+        lines.append(f"| {_query_label(q)} | {q.author or '—'} |")
+    for q in a.breaking_queries:
+        if q.sql:
+            lines += ["", f"<details><summary>SQL — {_query_label(q)}</summary>", "",
+                      "```sql", q.sql.strip(), "```", "", "</details>"]
+    return lines
+
+
+def _owners_line(owners) -> str:
+    seen: set[str] = set()
+    names: list[str] = []
+    for o in owners:
+        if o.urn in seen:
+            continue
+        seen.add(o.urn)
+        names.append(o.mention)
+    return f"**Owners (from DataHub):** {', '.join(names)}"
+
+
 def _section_body(a: Assessment) -> list[str]:
-    return [f"- {r}" for r in a.reasons]
+    body = [f"- {r}" for r in a.reasons]
+    if a.breaking_queries:
+        body += ["", *_queries_block(a)]
+    if a.owners:
+        body += ["", _owners_line(a.owners)]
+    return body
 
 
 def _section(a: Assessment, *, collapse: bool) -> list[str]:
