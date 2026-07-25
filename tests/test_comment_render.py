@@ -213,3 +213,13 @@ def test_consumers_header_scoped_by_change_kind():
     out = render_comment([table_change])
     assert "**Affected assets:**" in out
     assert "**Downstream of" not in out
+
+
+def test_consumers_block_caps_at_max_and_counts_extra():
+    a = dataclasses.replace(
+        break_assessment_with_queries(),
+        downstream_consumers=[LineageNode(f"urn:li:dashboard:(tableau,d{i})", "DASHBOARD", 3, f"D{i}")
+                              for i in range(11)])
+    out = render_comment([a])
+    assert out.count("- [D") == 8        # capped at _MAX_CONSUMERS
+    assert "…and 3 more" in out          # 11 - 8

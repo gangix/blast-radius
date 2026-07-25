@@ -28,6 +28,9 @@ _VERDICT_RANK = {Verdict.PASS: 0, Verdict.WARN: 1, Verdict.BREAK: 2}
 # DataHub frontend path segment per entity type (Fix #4).
 _ENTITY_PATH = {"DATASET": "dataset", "CHART": "chart", "DASHBOARD": "dashboard"}
 
+# Cap the affected-assets list so a wide blast radius doesn't flood the comment.
+_MAX_CONSUMERS = 8
+
 
 @dataclass(frozen=True)
 class CommentContext:
@@ -161,8 +164,12 @@ def _consumers_block(a: Assessment, ctx: CommentContext) -> list[str]:
     else:
         header = "**Affected assets:**"
     lines = [header]
-    for n in a.downstream_consumers:
+    consumers = a.downstream_consumers
+    for n in consumers[:_MAX_CONSUMERS]:
         lines.append(f"- [{n.label}]({_entity_url(ctx.link_base, n.entity_type, n.urn)})")
+    extra = len(consumers) - _MAX_CONSUMERS
+    if extra > 0:
+        lines.append(f"- …and {extra} more")
     return lines
 
 

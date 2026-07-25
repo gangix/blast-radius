@@ -32,8 +32,9 @@ def _nodes_from_lineage(payload: dict) -> list[LineageNode]:
         urn = ent.get("urn")
         if not urn:
             continue
+        name = (ent.get("properties") or {}).get("name") or ent.get("name")
         nodes.append(LineageNode(urn=urn, entity_type=ent.get("type", "UNKNOWN"),
-                                 degree=r.get("degree", 0), name=ent.get("name")))
+                                 degree=r.get("degree", 0), name=name))
     return nodes
 
 

@@ -61,3 +61,12 @@ def test_ensure_tag_emits_when_absent(monkeypatch):
     monkeypatch.setattr(ac, "get_graph", lambda: G())
     _client(monkeypatch).ensure_tag("urn:li:tag:blast-radius-breaking", name="blast-radius-breaking", description="d")
     assert len(emitted) == 1
+
+
+def test_nodes_from_lineage_prefers_properties_name():
+    payload = {"downstreams": {"searchResults": [
+        {"entity": {"urn": "urn:li:chart:(tableau,c1)", "type": "CHART",
+                    "name": None, "properties": {"name": "Orders By Month"}}, "degree": 2},
+    ]}}
+    (node,) = _nodes_from_lineage(payload)
+    assert node.name == "Orders By Month"

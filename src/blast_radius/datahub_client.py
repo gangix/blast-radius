@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datahub.ingestion.graph.client import DatahubClientConfig, DataHubGraph
 from datahub.metadata.schema_classes import (
+    CorpGroupInfoClass,
     CorpUserInfoClass,
     DatasetUsageStatisticsClass,
     OwnershipClass,
@@ -152,7 +153,7 @@ class DataHubClient:
                     name=props.name if props else None,
                     description=props.description if props else None,
                     sql=props.statement.value if props and props.statement else None,
-                    author=props.created.actor if props and props.created else None,
+                    author=self._actor_name(props.created.actor) if props and props.created else None,
                     datasets=frozenset(datasets),
                     columns=frozenset(columns),
                 )
@@ -203,6 +204,10 @@ class DataHubClient:
                 info = self.graph.get_aspect(entity_urn=owner_urn, aspect_type=CorpUserInfoClass)
                 if info:
                     name, email = info.displayName, info.email
+            else:
+                ginfo = self.graph.get_aspect(entity_urn=owner_urn, aspect_type=CorpGroupInfoClass)
+                if ginfo:
+                    name = ginfo.displayName or ginfo.name
             out.append(Owner(urn=owner_urn, kind=kind, name=name, email=email))
         return out
 
@@ -214,4 +219,19 @@ class DataHubClient:
         props = entity.get("properties") or {}
         name = props.get("name") or entity.get("name")
         self._name_cache[urn] = name
+        return name
+
+    def _actor_name(self, actor_urn: str | None) -> str | None:
+        """Resolve a corpuser actor URN to a human display name (cached)."""
+        if not actor_urn:
+            return None
+        if actor_urn in self._name_cache:
+            return self._name_cache[actor_urn]
+        name: str | None = None
+        if ":corpuser:" in actor_urn:
+            info = self.graph.get_aspect(entity_urn=actor_urn, aspect_type=CorpUserInfoClass)
+            if info:
+                name = info.displayName or info.fullName
+        name = name or actor_urn.split(":")[-1]
+        self._name_cache[actor_urn] = name
         return name
